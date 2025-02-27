@@ -6,6 +6,14 @@ library(survminer)
 setwd('C:/Users/joelb/Desktop/survival_analysis')
 gym_data <- read_csv('gym_churn_us.csv')
 
-s=coxph(Surv(gym_data$Lifetime,gym_data$Churn) ~ gym_data$gender+gym_data$Near_Location+gym_data$Partner+gym_data$Promo_friends+gym_data$Phone+gym_data$Contract_period+gym_data$Group_visits+gym_data$Age+gym_data$Avg_additional_charges_total+gym_data$Month_to_end_contract+gym_data$Avg_class_frequency_total+gym_data$Avg_class_frequency_current_month, data = gym_data)
+s <- Surv(gym_data$Lifetime, gym_data$Churn)
+survfit(s~gym_data$Near_Location+gym_data$gender)
+survfit(Surv(gym_data$Lifetime, gym_data$Churn)~gym_data$Near_Location+gym_data$gender, data=gym_data)
+sfit <- survfit(Surv(gym_data$Lifetime, gym_data$Churn)~gym_data$Near_Location+gym_data$gender, data=gym_data)
 
-summary(s, times=seq(0, 1000, 100))
+
+summary(sfit)
+
+sfit <- survfit(Surv(gym_data$Lifetime, gym_data$Churn)~gym_data$Near_Location+gym_data$gender, data=gym_data)
+plot(sfit)
+
