@@ -3,6 +3,7 @@ library(ggsurvfit)
 library(dplyr)
 library(survival)
 library(survminer)
+
 setwd('../Survival-Analysis-DSTI-Project')
 gym_data <- read_csv('datas/gym_churn_us.csv')
 
