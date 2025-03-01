@@ -1,27 +1,86 @@
-
 library(tidyverse)
 library(ggsurvfit)
 library(dplyr)
 library(survival)
 library(survminer)
+
 setwd('../Survival-Analysis-DSTI-Project')
 gym_data <- read_csv('datas/gym_churn_us.csv')
 
+gym_data$censored <- ifelse(gym_data$Churn == 0, TRUE, FALSE)
 
+surv_object <- Surv(time = gym_data$Lifetime, event = gym_data$Churn)
 
-spec(gym_data)
-print(table(gym_data$Churn))
+km_fit <- survfit(surv_object ~ 1,data=gym_data)
+km_summary <- summary(km_fit)
+print(paste("survival probabilities: ", min(km_summary$surv)))
+print(paste("survival times: ", max(km_summary$time)))
 
+```{r}
+km_fit_transplant <- survfit(surv_object ~ Contract_period, data = gym_data)
+#summary(km_fit_transplant) # commented out to reduce the pages
+ggsurvplot(km_fit_transplant, conf.int = TRUE, ggtheme = theme_minimal(),
+           title = "Survival Curve by Transplant Status with Censoring", 
+           censor.shape = '|', censor.size=4)
+```
 
+```{r}
+km_fit_transplant <- survfit(surv_object ~ Month_to_end_contract, data = gym_data)
+#summary(km_fit_transplant) # commented out to reduce the pages
+ggsurvplot(km_fit_transplant, conf.int = TRUE, ggtheme = theme_minimal(),
+           title = "Survival Curve by Transplant Status with Censoring", 
+           censor.shape = '|', censor.size=4)
+```
 
-s <- Surv(gym_data$Lifetime, gym_data$Churn)
-survfit(s~gym_data$Near_Location+gym_data$gender)
-survfit(Surv(gym_data$Lifetime, gym_data$Churn)~gym_data$Near_Location+gym_data$gender, data=gym_data)
-sfit <- survfit(Surv(gym_data$Lifetime, gym_data$Churn)~gym_data$Near_Location+gym_data$gender, data=gym_data)
+```{r}
+gym_data <- within(gym_data, {   
+  Age.cat <- NA # need to initialize variable
+  Age.cat[Age < 25] <- "18-25"
+  Age.cat[Age >= 25 & Age < 30] <- "25-30"
+  Age.cat[Age >= 30  & Age < 35] <- "30-35"
+  Age.cat[Age >= 35] <- "35+"
+   } )
+```
 
+```{r}
+km_fit_transplant <- survfit(surv_object ~ Age.cat, data = gym_data)
+#summary(km_fit_transplant) # commented out to reduce the pages
+ggsurvplot(km_fit_transplant, conf.int = TRUE, ggtheme = theme_minimal(),
+           title = "Survival Curve by Transplant Status with Censoring", 
+           censor.shape = '|', censor.size=4)
+```
 
-summary(sfit)
+```{r}
+gym_data <- within(gym_data, {   
+  Month_to_end_contract.cat <- NA # need to initialize variable
+  Month_to_end_contract.cat[Month_to_end_contract >= 1 & Month_to_end_contract < 3] <- "1-2"
+  Month_to_end_contract.cat[Month_to_end_contract >= 3  & Month_to_end_contract < 6] <- "3-5"
+  Month_to_end_contract.cat[Month_to_end_contract >= 6] <- "> 6"
+   } )
+```
 
-sfit <- survfit(Surv(gym_data$Lifetime, gym_data$Churn)~gym_data$Near_Location+gym_data$gender, data=gym_data)
-plot(sfit)
+```{r}
+km_fit_transplant <- survfit(surv_object ~ Month_to_end_contract.cat, data = gym_data)
+#summary(km_fit_transplant) # commented out to reduce the pages
+ggsurvplot(km_fit_transplant, conf.int = TRUE, ggtheme = theme_minimal(),
+           title = "Survival Curve by Transplant Status with Censoring", 
+           censor.shape = '|', censor.size=4)
+```
 
+```{r}
+gym_data <- within(gym_data, {   
+  Avg_additional_charges_total.cat <- NA # need to initialize variable
+  Avg_additional_charges_total.cat[Avg_additional_charges_total >= 0 & Avg_additional_charges_total < 50] <- "<50"
+  Avg_additional_charges_total.cat[Avg_additional_charges_total >= 50 & Avg_additional_charges_total < 150] <- "50-150"
+  Avg_additional_charges_total.cat[Avg_additional_charges_total >= 150  & Avg_additional_charges_total < 250] <- "150-250"
+  Avg_additional_charges_total.cat[Avg_additional_charges_total >= 250] <- ">250"
+   } )
+```
+
+```{r}
+km_fit_transplant <- survfit(surv_object ~ Avg_additional_charges_total.cat, data = gym_data)
+#summary(km_fit_transplant) # commented out to reduce the pages
+ggsurvplot(km_fit_transplant, conf.int = TRUE, ggtheme = theme_minimal(),
+           title = "Survival Curve by Transplant Status with Censoring", 
+           censor.shape = '|', censor.size=4)
+```
