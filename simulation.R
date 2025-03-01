@@ -1,1 +1,0 @@
-gym_data <- read_csv('gym_churn_us.csv')
