@@ -1,0 +1,149 @@
+```{r}
+library(ggplot2)
+library(gridExtra)
+library(survival)
+library(dplyr)
+library(survminer)
+```
+
+```{r}
+df <- read.csv('../Survival-Analysis-DSTI-Project/datas/gym_churn_us.csv')
+head(df)
+```
+
+```{r}
+df$gender <- as.character(df$gender)
+df$Near_Location <- as.character(df$Near_Location)
+df$Partner <- as.character(df$Partner)
+df$Promo_friends <- as.character(df$Promo_friends)
+df$Churn <- as.character(df$Churn)
+df$Phone <- as.character(df$Phone)
+df$Group_visits <- as.character(df$Group_visits)
+df$Lifetime <- as.numeric(df$Lifetime)
+```
+
+```{r}
+options(repr.plot.width=20, repr.plot.height=8)
+
+p1 <- ggplot(df, aes(y = Churn)) + geom_bar()
+p2 <- ggplot(df, aes(x = Lifetime)) + geom_histogram(bins = 15)
+
+grid.arrange(p1, p2, ncol = 2)
+```
+- Majority of the respondents had not churned. - Most respondents had a gym membership lifetime of 10 months or lesser.
+
+```{r}
+p1 <- ggplot(df, aes(x = gender)) + geom_bar()
+p2 <- ggplot(df, aes(x = Near_Location)) + geom_bar()
+p3 <- ggplot(df, aes(x = Partner)) + geom_bar()
+p4 <- ggplot(df, aes(x = Promo_friends)) + geom_bar()
+p5 <- ggplot(df, aes(x = Phone)) + geom_bar()
+p6 <- ggplot(df, aes(x = Group_visits)) + geom_bar()
+
+grid.arrange(p1, p2, p3, p4, p5, p6, ncol = 3)
+```
+
+- There were relatively equal number of male and female respondents. - Majority of respondents lived or worked in the neighbourhood where the gym was located. - Majority of the respodents provided a phone number and majority of respondents originally signed up through "bring a friend" offer. - More respondents visited the gym without a group.
+
+```{r}
+p1 <- ggplot(df, aes(x = Contract_period)) + geom_histogram(bins = 10)
+p2 <- ggplot(df, aes(x = Age)) + geom_histogram(bins = 20)
+p3 <- ggplot(df, aes(x = Avg_additional_charges_total)) + geom_histogram(bins = 20)
+p4 <- ggplot(df, aes(x = Month_to_end_contract)) + geom_histogram(bins = 10)
+p5 <- ggplot(df, aes(x = Avg_class_frequency_total)) + geom_histogram(bins = 20)
+p6 <- ggplot(df, aes(x = Avg_class_frequency_current_month)) + geom_histogram(bins = 20)
+
+grid.arrange(p1, p2, p3, p4, p5, p6, ncol = 3)
+```
+
+- Majority of respondents were in the mid 20s to mid 30s. - Majority of respondents had an average class frequency of 1 to 3 times in the current month in total.
+
+```{r}
+p1 <- ggplot(df, aes(x = Contract_period,y = Churn)) + geom_boxplot()
+p2 <- ggplot(df, aes(x = Age, y = Churn)) + geom_boxplot()
+p3 <- ggplot(df, aes(x = Avg_additional_charges_total, y = Churn)) + geom_boxplot()
+p4 <- ggplot(df, aes(x = Month_to_end_contract, y = Churn)) + geom_boxplot()
+p5 <- ggplot(df, aes(x = Avg_class_frequency_total, y = Churn)) + geom_boxplot()
+p6 <- ggplot(df, aes(x = Avg_class_frequency_current_month, y = Churn)) + geom_boxplot()
+
+grid.arrange(p1, p2, p3, p4, p5, p6, ncol = 3)
+```
+
+Respodents who churned had a lower mean average class frequency for the current month and in total.
+
+```{r}
+df$Churn <- as.numeric(df$Churn)
+
+fit <- survfit(Surv(Lifetime, Churn) ~ 1, data = df) 
+ggsurvplot(fit, df)
+```
+
+As the lifetime of a gym membership increased from 0 to 5 months, the probability of them not churning decreased sharply to 0.7. After the 5th month, the probability of gym members not churning remained relatively constant above 0.6.
+
+```{r}
+df$Near_Location <- as.factor(df$Near_Location)
+
+fit <- survfit(Surv(Lifetime, Churn) ~ Near_Location, data = df) 
+ggsurvplot(fit, data = df)
+```
+
+For any given lifetime, the probability of a gym member not churning would be higher if he lived or work in the neighbourhood where the gym was located.
+
+```{r}
+fit <- survfit(Surv(Lifetime, Churn) ~ Partner, data = df) 
+ggsurvplot(fit, data = df)
+```
+
+```{r}
+fit <- survfit(Surv(Lifetime, Churn) ~ Promo_friends, data = df) 
+ggsurvplot(fit, data = df)
+```
+
+```{r}
+fit <- survfit(Surv(Lifetime, Churn) ~ Group_visits, data = df) 
+ggsurvplot(fit, data = df)
+```
+
+For any given lifetime, the probability of a gym member not churning would be higher if he usually visit the gym in a group, originally signed up through "bring a friend" offer, or if the user worked in an associated company.
+
+```{r}
+cph <- coxph(Surv(Lifetime, Churn) ~ ., data = df)
+summary(cph)
+```
+
+- Living or working in the neighbourhood of the gym was associated with a 15% reduction in churning of gym membership. - Individuals who visited the gym in a group were 22% less likely to churn. - As the age of an individual increases, a one year increase in age was associated with 14% reduction in churn. - An increase in average class frequency for the current month by one was associated with 80% reduction in churn.
+
+```{r}
+cox.zph(cph)
+```
+
+There were several variables (eg. age, Group_visits) that violated the assumption of the Cox PH model.
+
+```{r}
+cph <- coxph(Surv(Lifetime, Churn) ~ gender + Near_Location + Partner + Promo_friends +
+            Phone + Contract_period + strata(Group_visits) + Age + Avg_additional_charges_total + 
+             Month_to_end_contract + Avg_class_frequency_total + Avg_class_frequency_current_month , data = df)
+
+summary(cph)
+```
+
+```{r}
+cox.zph(cph)
+```
+
+Conclusion
+1/ Retaining efforts
+
+More efforts to retain customers and prevent them from churning should be put in during a customer's 0 to 5th month of gym membership.
+
+2/ Marketing efforts
+
+Marketing should be focused in the vicinity of the gym (eg. handing out flyers near the gym, billboards) instead of through social media posts and online advertisements since people who lived or worked in the neighbourhood of the gym were associated with lower probability of churning.
+
+Marketing should be focused on older individuals instead of students since gym membership tend to be costly for students, which implies a higher chance of churning.
+
+3/ Promotion campaigns
+
+Promotions can be given to people who sign up for gym membership as a group since individuals who visit the gym in a group had lower probability of churning.
+
+Incentives can be given to gym members who signed up for more classes and staff can be better equipped to introduce suitable classes to gym members since higher average class frequency for the current month were associated with lower probability of churning.

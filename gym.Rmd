@@ -1,3 +1,4 @@
+
 library(tidyverse)
 library(ggsurvfit)
 library(dplyr)
@@ -5,6 +6,13 @@ library(survival)
 library(survminer)
 setwd('../Survival-Analysis-DSTI-Project')
 gym_data <- read_csv('datas/gym_churn_us.csv')
+
+
+
+spec(gym_data)
+print(table(gym_data$Churn))
+
+
 
 s <- Surv(gym_data$Lifetime, gym_data$Churn)
 survfit(s~gym_data$Near_Location+gym_data$gender)
