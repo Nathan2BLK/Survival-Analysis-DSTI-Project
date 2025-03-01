@@ -11,3 +11,5 @@ Promo_friends - if the user originally signed up through a "bring a friend" offe
 Phone - if the user provided their phone number.  
 Age.  
 Lifetime - the time (in months) since the user first arrived at the gym.
+
+https://www.kaggle.com/datasets/adrianvinueza/gym-customers-features-and-churn/code
