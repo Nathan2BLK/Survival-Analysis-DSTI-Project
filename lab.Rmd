@@ -1,149 +1,388 @@
-```{r}
+---
+title: "Gym Membership Churn Survival Analysis"
+author: "Nathan DE BLECKER / Joel BOLDUC"
+date: "`01/03/2025`"
+output:
+  word_document: default
+  html_document: default
+---
+
+# **1. Introduction**
+This report analyzes gym membership churn using survival analysis techniques, including Kaplan-Meier estimations, log-rank tests, and Cox proportional hazards modeling.
+
+---
+# **2. Load Required Libraries and Data**
+```{r setup, message=FALSE, warning=FALSE}
 library(ggplot2)
 library(gridExtra)
 library(survival)
 library(dplyr)
 library(survminer)
+library(gtsummary)
 ```
 
+# **3. Load and Prepare Data**
 ```{r}
 df <- read.csv('../Survival-Analysis-DSTI-Project/datas/gym_churn_us.csv')
-head(df)
 ```
 
+## **Check for Missing Values**
 ```{r}
-df$gender <- as.character(df$gender)
-df$Near_Location <- as.character(df$Near_Location)
-df$Partner <- as.character(df$Partner)
-df$Promo_friends <- as.character(df$Promo_friends)
-df$Churn <- as.character(df$Churn)
-df$Phone <- as.character(df$Phone)
-df$Group_visits <- as.character(df$Group_visits)
-df$Lifetime <- as.numeric(df$Lifetime)
+sum(is.na(df$col))
 ```
 
+## **Feature Engineering and Data Cleaning**
 ```{r}
-options(repr.plot.width=20, repr.plot.height=8)
+df <- df %>%
+  mutate(
+    gender = as.character(gender),
+    Near_Location = as.character(Near_Location),
+    Partner = as.character(Partner),
+    Promo_friends = as.character(Promo_friends),
+    Churn = as.numeric(Churn),
+    Phone = as.character(Phone),
+    Group_visits = as.character(Group_visits),
+    Lifetime = as.numeric(Lifetime),
+    Age = cut(Age, breaks = c(0, 25, 30, 35, Inf), labels = c("0–25", "26–30", "31–35", "36–50")),
+    Avg_additional_charges_total = cut(Avg_additional_charges_total, 
+                                       breaks = c(0, 100, 200, 300, Inf), 
+                                       labels = c("0–100", "101–200", "201–300", "301–+")),
+    Month_to_end_contract = cut(Month_to_end_contract, 
+                                breaks = c(0, 1, 5, 6, 11, Inf), 
+                                labels = c("1", "2-5", "6", "7-11", "12-+")),
+    Avg_class_frequency_current_month = cut(Avg_class_frequency_current_month, 
+                                            breaks = c(0, 1, 2, 3, 4, Inf), 
+                                            labels = c("1", "2", "3", "4", "5+"))
+  )
+```
 
-p1 <- ggplot(df, aes(y = Churn)) + geom_bar()
-p2 <- ggplot(df, aes(x = Lifetime)) + geom_histogram(bins = 15)
+# **4. Exploratory Data Analysis**
+## **4.1 Distribution of Churn and Membership Lifetime**
+```{r}
+p1 <- ggplot(df, aes(y = Churn)) + geom_bar() + ggtitle("Churn Distribution")
+p2 <- ggplot(df, aes(x = Lifetime)) + geom_histogram(bins = 15) + ggtitle("Lifetime Distribution")
 
 grid.arrange(p1, p2, ncol = 2)
-```
-- Majority of the respondents had not churned. - Most respondents had a gym membership lifetime of 10 months or lesser.
 
+```
+The majority of respondents had not canceled their gym memberships.
+Most respondents had a gym membership duration of 10 months or less.
+
+
+## **4.2 Categorical Variable Distributions**
 ```{r}
-p1 <- ggplot(df, aes(x = gender)) + geom_bar()
-p2 <- ggplot(df, aes(x = Near_Location)) + geom_bar()
-p3 <- ggplot(df, aes(x = Partner)) + geom_bar()
-p4 <- ggplot(df, aes(x = Promo_friends)) + geom_bar()
-p5 <- ggplot(df, aes(x = Phone)) + geom_bar()
-p6 <- ggplot(df, aes(x = Group_visits)) + geom_bar()
+p1 <- ggplot(df, aes(x = gender)) + geom_bar() + ggtitle("Gender Distribution")
+p2 <- ggplot(df, aes(x = Near_Location)) + geom_bar() + ggtitle("Near Location Distribution")
+p3 <- ggplot(df, aes(x = Partner)) + geom_bar() + ggtitle("Partner Membership Distribution")
+p4 <- ggplot(df, aes(x = Promo_friends)) + geom_bar() + ggtitle("Promo Friends Distribution")
+p5 <- ggplot(df, aes(x = Phone)) + geom_bar() + ggtitle("Phone Shared Distribution")
+p6 <- ggplot(df, aes(x = Group_visits)) + geom_bar() + ggtitle("Group Visits Distribution")
 
 grid.arrange(p1, p2, p3, p4, p5, p6, ncol = 3)
 ```
+Gender Distribution: The dataset has a balanced distribution of male and female members, indicating that gender is not a major differentiating factor in gym membership.
 
-- There were relatively equal number of male and female respondents. - Majority of respondents lived or worked in the neighbourhood where the gym was located. - Majority of the respodents provided a phone number and majority of respondents originally signed up through "bring a friend" offer. - More respondents visited the gym without a group.
+Near Location: A significant majority of gym members live near the gym (Near_Location=1). This suggests that proximity to the gym is an important factor in membership decisions.
+
+Partner Membership: There is a fairly even split between members who have a workout partner and those who do not. However, slightly more members do not have a partner membership.
+
+Promo Friends: A larger portion of members did not join through a "bring a friend" promotion. This suggests that most gym members join independently rather than through referrals.
+
+Phone Shared: The majority of members have shared their phone number, indicating potential willingness for communication, which could be used for marketing and retention strategies.
+
+Group Visits: More members prefer to visit the gym alone rather than in groups. This suggests that social engagement might not be a key factor for most members, but it could be explored further for targeted engagement strategies.
+
+# **5. Kaplan-Meier Survival Analysis**
+## **5.1 Overall Survival Estimate**
+```{r}
+fit <- survfit(Surv(Lifetime, Churn) ~ 1, data = df)
+km_summary <- summary(fit)
+print(paste("survival probabilities: ", min(km_summary$surv)))
+print(paste("survival times: ", max(km_summary$time)))
+```
+Around 70.7% of customers are still active after 9 months.
+About 29.3% of customers have churned by this time.
 
 ```{r}
-p1 <- ggplot(df, aes(x = Contract_period)) + geom_histogram(bins = 10)
-p2 <- ggplot(df, aes(x = Age)) + geom_histogram(bins = 20)
-p3 <- ggplot(df, aes(x = Avg_additional_charges_total)) + geom_histogram(bins = 20)
-p4 <- ggplot(df, aes(x = Month_to_end_contract)) + geom_histogram(bins = 10)
-p5 <- ggplot(df, aes(x = Avg_class_frequency_total)) + geom_histogram(bins = 20)
-p6 <- ggplot(df, aes(x = Avg_class_frequency_current_month)) + geom_histogram(bins = 20)
-
-grid.arrange(p1, p2, p3, p4, p5, p6, ncol = 3)
+ggsurvplot(fit, conf.int = TRUE, risk.table = TRUE,
+           title = "Kaplan-Meier Survival Estimate",
+           xlab = "Time (Months)", ylab = "Survival Probability")
 ```
 
-- Majority of respondents were in the mid 20s to mid 30s. - Majority of respondents had an average class frequency of 1 to 3 times in the current month in total.
+Initial Drop:
+
+  At day 0, the survival probability is 1 (100%) since all 4,000 members are active.
+  
+  The curve quickly drops within the first few days, meaning a significant portion of members churns early after joining.
+
+Gradual Decline:
+
+  After the sharp drop, the survival probability stabilizes around 70-75% and decreases slowly over time.
+  
+  This suggests that most members who remain past the initial period tend to stay longer.
+
+Long-Term Membership:
+
+  After 30 days, the survival probability is still above 70%, meaning about 70% of members remain active after one month.
+  
+  The number of members "at risk" (still active) drops from 4,000 at day 0 to only 23 at day 20 and just 1 at day 30, indicating very few         members reach the maximum recorded duration.
+
+## **5.2 Survival with parameters**
+```{r}
+fit <- survfit(Surv(Lifetime, Churn) ~ gender, data = df) 
+ggsurvplot(fit, conf.int = TRUE, risk.table = TRUE,
+           pval = TRUE, legend.labs = c("Woman", "Men"),
+           title = "Kaplan-Meier Survival by Gender")
+
+```
+There is no significant difference in gym retention between men and women, as indicated by the nearly identical Kaplan-Meier survival curves and the p-value of 0.99. This suggests that gender does not play a role in gym membership duration.
+
 
 ```{r}
-p1 <- ggplot(df, aes(x = Contract_period,y = Churn)) + geom_boxplot()
-p2 <- ggplot(df, aes(x = Age, y = Churn)) + geom_boxplot()
-p3 <- ggplot(df, aes(x = Avg_additional_charges_total, y = Churn)) + geom_boxplot()
-p4 <- ggplot(df, aes(x = Month_to_end_contract, y = Churn)) + geom_boxplot()
-p5 <- ggplot(df, aes(x = Avg_class_frequency_total, y = Churn)) + geom_boxplot()
-p6 <- ggplot(df, aes(x = Avg_class_frequency_current_month, y = Churn)) + geom_boxplot()
+fit <- survfit(Surv(Lifetime, Churn) ~ Near_Location, data = df)
+ggsurvplot(fit, conf.int = TRUE, risk.table = TRUE,
+           pval = TRUE, legend.labs = c("Far", "Close"),
+           title = "Kaplan-Meier Survival by Near Location")
 
-grid.arrange(p1, p2, p3, p4, p5, p6, ncol = 3)
 ```
+Members who live closer to the gym tend to stay active longer, while those who live farther away are more likely to churn sooner. This insight could be used to tailor retention strategies, such as targeted engagement programs for members who live farther from the gym.
 
-Respodents who churned had a lower mean average class frequency for the current month and in total.
 
 ```{r}
-df$Churn <- as.numeric(df$Churn)
-
-fit <- survfit(Surv(Lifetime, Churn) ~ 1, data = df) 
-ggsurvplot(fit, df)
+fit <- survfit(Surv(Lifetime, Churn) ~ Partner, data = df)  
+ggsurvplot(fit, conf.int = TRUE, risk.table = TRUE,
+           pval = TRUE, legend.labs = c("no", "yes"),
+           title = "Kaplan-Meier Survival by Partner")
 ```
-
-As the lifetime of a gym membership increased from 0 to 5 months, the probability of them not churning decreased sharply to 0.7. After the 5th month, the probability of gym members not churning remained relatively constant above 0.6.
+Members who live closer to the gym (yes) have a higher retention rate over time compared to those who live farther away (no). The survival probability for the "yes" group remains consistently higher, indicating that proximity to the gym is associated with longer membership duration. The significant p-value (< 0.0001) confirms that this difference is statistically meaningful. This insight suggests that distance plays a crucial role in gym member retention, and targeted strategies could be developed to improve engagement for members who live farther away.
 
 ```{r}
-df$Near_Location <- as.factor(df$Near_Location)
-
-fit <- survfit(Surv(Lifetime, Churn) ~ Near_Location, data = df) 
-ggsurvplot(fit, data = df)
+fit <- survfit(Surv(Lifetime, Churn) ~ Partner, data = df)  
+ggsurvplot(fit, conf.int = TRUE, risk.table = TRUE,
+           pval = TRUE, legend.labs = c("no", "yes"),
+           title = "Kaplan-Meier Survival by Partner")
 ```
+Members who have a partner membership (yes) exhibit higher retention rates than those without one (no). The survival probability for members with a partner remains consistently higher, indicating that having a workout partner positively influences long-term gym engagement.
 
-For any given lifetime, the probability of a gym member not churning would be higher if he lived or work in the neighbourhood where the gym was located.
 
 ```{r}
-fit <- survfit(Surv(Lifetime, Churn) ~ Partner, data = df) 
-ggsurvplot(fit, data = df)
+fit <- survfit(Surv(Lifetime, Churn) ~ Promo_friends, data = df)  
+ggsurvplot(fit, conf.int = TRUE, risk.table = TRUE,
+           pval = TRUE, legend.labs = c("no", "yes"),
+           title = "Kaplan-Meier Survival by Promo friends")
 ```
+Members who joined the gym through a promo with friends (yes) have a higher retention rate compared to those who joined without such a promotion (no). The survival probability for the "yes" group remains consistently higher over time, indicating that having friends in the gym positively impacts membership duration. The statistically significant p-value (< 0.0001) confirms that this difference is meaningful.
+
 
 ```{r}
-fit <- survfit(Surv(Lifetime, Churn) ~ Promo_friends, data = df) 
-ggsurvplot(fit, data = df)
+fit <- survfit(Surv(Lifetime, Churn) ~ Contract_period, data = df)  
+ggsurvplot(fit, conf.int = TRUE, risk.table = TRUE,
+           pval = TRUE, legend.labs = c("1", "6", "12"),
+           title = "Kaplan-Meier Survival by Contract Period")
 ```
+The contract period significantly impacts gym member retention. Members with longer contracts (12 months, blue curve) exhibit the highest retention rates over time, followed by those with 6-month contracts (green curve), while 1-month contract members (red curve) have the lowest survival probability. The sharp early drop-off for 1-month contracts suggests that short-term members are more likely to churn quickly. The p-value (< 0.0001) indicates that these differences are statistically significant. These insights suggest that promoting longer-term contracts could improve overall retention and reduce early membership churn.
+
 
 ```{r}
 fit <- survfit(Surv(Lifetime, Churn) ~ Group_visits, data = df) 
-ggsurvplot(fit, data = df)
+ggsurvplot(fit, conf.int = TRUE, risk.table = TRUE,
+           pval = TRUE, legend.labs = c("no", "yes"),
+           title = "Kaplan-Meier Survival by Group visits")
 ```
+Members who participate in group visits (yes) have a higher retention rate compared to those who do not (no). The survival probability for group visitors remains consistently higher over time, suggesting that social engagement in group activities contributes to longer membership duration.
 
-For any given lifetime, the probability of a gym member not churning would be higher if he usually visit the gym in a group, originally signed up through "bring a friend" offer, or if the user worked in an associated company.
 
 ```{r}
-cph <- coxph(Surv(Lifetime, Churn) ~ ., data = df)
-summary(cph)
+fit <- survfit(Surv(Lifetime, Churn) ~ Age, data = df) 
+ggsurvplot(fit, conf.int = TRUE, risk.table = TRUE,
+           pval = TRUE, legend.labs = c("0-25", "26-30", "31-35", "36-50"),
+           title = "Kaplan-Meier Survival by Age")
 ```
+Age plays a significant role in gym member retention. The youngest age group (0-25, red curve) has the lowest survival probability, with a sharp early drop-off, indicating a higher churn rate. As age increases, retention improves, with the 36-50 age group (purple curve) showing the highest survival probability over time.
 
-- Living or working in the neighbourhood of the gym was associated with a 15% reduction in churning of gym membership. - Individuals who visited the gym in a group were 22% less likely to churn. - As the age of an individual increases, a one year increase in age was associated with 14% reduction in churn. - An increase in average class frequency for the current month by one was associated with 80% reduction in churn.
 
 ```{r}
-cox.zph(cph)
+fit <- survfit(Surv(Lifetime, Churn) ~ Avg_additional_charges_total, data = df) 
+ggsurvplot(fit, conf.int = TRUE, risk.table = TRUE,
+           pval = TRUE, legend.labs = c("0-100", "101-200", "201-300", "301-+"),
+           title = "Kaplan-Meier Survival by Additional Charges")
 ```
+Higher additional charges are associated with higher retention rates. Members who incur the highest additional charges (301+ range, purple curve) have the best survival probability, while those with the lowest additional charges (0-100 range, red curve) exhibit the highest churn rate. The trend suggests that members who spend more on additional services (such as personal training, classes, or other gym amenities) are more engaged and committed to their membership
 
-There were several variables (eg. age, Group_visits) that violated the assumption of the Cox PH model.
 
 ```{r}
-cph <- coxph(Surv(Lifetime, Churn) ~ gender + Near_Location + Partner + Promo_friends +
-            Phone + Contract_period + strata(Group_visits) + Age + Avg_additional_charges_total + 
-             Month_to_end_contract + Avg_class_frequency_total + Avg_class_frequency_current_month , data = df)
+fit <- survfit(Surv(Lifetime, Churn) ~ Month_to_end_contract, data = df) 
+ggsurvplot(fit, conf.int = TRUE, risk.table = TRUE,
+           pval = TRUE, legend.labs = c("1", "2-5", "6", "7-11", "12-+"),
+           title = "Kaplan-Meier Survival by number of month before contract finish")
+```
+The number of months remaining before a contract finishes significantly influences gym member retention. Members with only 1 month left (red curve) exhibit the highest churn rate, while those with longer contract periods remaining (12+ months, purple curve) have the highest retention. The survival probability improves progressively with longer contract durations.
+These findings suggest that proactive engagement strategies, such as renewal incentives or loyalty programs, should be implemented as contracts approach their expiration to reduce churn.
 
-summary(cph)
+
+```{r}
+# Nelson-Aalen cumulative hazard function for Avg_class_frequency_current_month
+na_fit_classes <- survfit(Surv(Lifetime, Churn) ~ Avg_class_frequency_current_month, 
+                          data = df, type = "fleming-harrington")
+
+# View cumulative hazard estimates
+summary(na_fit_classes)$table
+
 ```
 
 ```{r}
-cox.zph(cph)
+ggsurvplot(na_fit_classes, fun = "cumhaz", conf.int = TRUE,
+           title = "Cumulative Hazard Function by Class Frequency",
+           xlab = "Time (Months)", ylab = "Cumulative Hazard",
+           legend.title = "Class Frequency")
+
 ```
 
-Conclusion
-1/ Retaining efforts
+Higher class participation leads to lower churn.
+Low-engagement members (1-2 classes/month) should be targeted for retention strategies.
+Encouraging more frequent class participation (3+ per month) could help reduce churn.
 
-More efforts to retain customers and prevent them from churning should be put in during a customer's 0 to 5th month of gym membership.
 
-2/ Marketing efforts
 
-Marketing should be focused in the vicinity of the gym (eg. handing out flyers near the gym, billboards) instead of through social media posts and online advertisements since people who lived or worked in the neighbourhood of the gym were associated with lower probability of churning.
+# **6 Survival with parameters**
+## **6.1 Near Location Stratified by Contract Period**
+```{r}
+stratified_logrank_location <- survdiff(Surv(Lifetime, Churn) ~ Near_Location + strata(Contract_period), data = df)
 
-Marketing should be focused on older individuals instead of students since gym membership tend to be costly for students, which implies a higher chance of churning.
+print("Log-rank test for Near_Location stratified by Contract Period:")
+print(stratified_logrank_location)
 
-3/ Promotion campaigns
+```
+The large chi-square value (19.9) and extremely low p-value confirm that location significantly impacts churn, even when contract length is considered.
+This means that proximity to the gym is an independent factor influencing retention beyond contract duration.
 
-Promotions can be given to people who sign up for gym membership as a group since individuals who visit the gym in a group had lower probability of churning.
+## **6.2 Contract Period Stratified by Class Frequency**
+```{r}
+stratified_logrank_contract <- survdiff(Surv(Lifetime, Churn) ~ Contract_period + strata(Avg_class_frequency_current_month), data = df)
 
-Incentives can be given to gym members who signed up for more classes and staff can be better equipped to introduce suitable classes to gym members since higher average class frequency for the current month were associated with lower probability of churning.
+print("Log-rank test for Contract Period stratified by Class Frequency:")
+print(stratified_logrank_contract)
+
+```
+The massive chi-square value (502) and near-zero p-value indicate that contract length has a major independent effect on retention, even after considering class attendance.
+
+## **6.2 Class Frequency Stratified by Age**
+```{r}
+stratified_logrank_class <- survdiff(Surv(Lifetime, Churn) ~ Avg_class_frequency_current_month + strata(Age), data = df)
+
+print("Log-rank test for Class Frequency stratified by Age:")
+print(stratified_logrank_class)
+
+```
+The huge chi-square value (424) and near-zero p-value confirm that class frequency significantly impacts retention, even after adjusting for age.
+This means that class attendance is a key independent factor in gym retention.
+
+## **6.2 Partner Stratified by Near Location**
+```{r}
+stratified_logrank_partner <- survdiff(Surv(Lifetime, Churn) ~ Partner + strata(Near_Location), data = df)
+
+print("Log-rank test for Partner Membership stratified by Near Location:")
+print(stratified_logrank_partner)
+
+```
+The very large chi-square value (103) and extremely low p-value confirm that partner membership is a critical factor in retention, even after controlling for distance from the gym.
+This means that having a workout partner significantly reduces churn, regardless of whether the member lives close or far from the gym.
+
+# **7. Cox Proportional Hazards Model**
+```{r}
+# Fit Cox regression model using key predictors
+cox_model <- coxph(Surv(Lifetime, Churn) ~ Contract_period + 
+                   Avg_class_frequency_current_month + 
+                   Near_Location + 
+                   Partner + 
+                   Age, 
+                   data = df)
+
+# Display regression results in a structured table
+tbl_regression(cox_model)
+
+```
+Contract Duration Strongly Reduces Churn
+🔹 log(HR) = -0.25 (p < 0.001)
+🔹 Longer contracts significantly lower churn risk.
+
+Class Attendance is the Strongest Retention Factor
+🔹 The more classes attended, the lower the churn risk:
+
+2 classes/month: log(HR) = -0.37 (p < 0.001) → Moderate retention boost.
+3 classes/month: log(HR) = -1.3 (p < 0.001) → Strong impact.
+4 classes/month: log(HR) = -2.7 (p < 0.001) → Very strong retention effect.
+5+ classes/month: log(HR) = -16 (CI too wide, p > 0.9) → Likely due to low sample size.
+
+Living Near the Gym Improves Retention
+🔹 log(HR) = -0.24 (p = 0.002) → Members closer to the gym have significantly lower churn risk.
+
+Partner Membership Significantly Increases Retention
+🔹 log(HR) = -0.21 (p = 0.003) → Members with a workout partner have lower churn risk.
+
+Age is a Major Predictor of Retention
+🔹 Younger members churn the fastest, while older members are the most stable:
+
+26-30 years: log(HR) = -0.79 (p < 0.001) → Moderate reduction in churn.
+31-35 years: log(HR) = -1.9 (p < 0.001) → Strong reduction in churn.
+36-50 years: log(HR) = -3.8 (p < 0.001) → Most stable group with the lowest churn risk.
+
+# **8. Residual Diagnostics**
+## **8.1 Martingale Residuals**
+```{r}
+# Plot Martingale residuals (to check functional form)
+plot(residuals(cox_model, type = "martingale"), 
+     main = "Martingale Residuals", 
+     ylab = "Residuals", xlab = "Index", col = "blue")
+```
+Martingale Residuals (First Plot - Blue)
+🔹 Purpose: Checks if the covariates in the Cox model are correctly specified.
+🔹 Interpretation:
+
+The residuals center around 0 and are randomly scattered, which is a good sign.
+However, some observations seem to deviate significantly, especially near the edges.
+If there was a clear pattern or curvature, it would suggest that some variables may need transformation (e.g., log transformation).
+Since the spread is relatively uniform, no major issues appear in terms of functional form.
+
+## **8.2 Deviance Residuals**
+```{r}
+# Plot Deviance residuals (to check model fit & outliers)
+plot(residuals(cox_model, type = "deviance"), 
+     main = "Deviance Residuals", 
+     ylab = "Residuals", xlab = "Index", col = "red")
+```
+Deviance Residuals (Second Plot - Red)
+🔹 Purpose: Detects outliers and poorly fitted observations.
+🔹 Interpretation:
+
+Most residuals cluster around zero, which is expected for a well-fitting model.
+However, some extreme values (positive and negative) suggest that a few members had unexpected survival outcomes.
+Residuals beyond ±2 are potential outliers, which may indicate:
+Members who stayed much longer than predicted.
+Members who churned much earlier than expected.
+
+# **9. Conclusion**
+
+1. Kaplan-Meier Survival Estimation
+
+  A sharp initial drop in retention occurs, followed by stabilization.
+  Members with longer contracts, frequent class attendance, and closer gym proximity have higher retention.
+
+2. Log-Rank Tests
+
+  Statistically significant differences in retention exist across contract periods, class attendance,          location, and partner membership (p < 0.001).
+
+3.Nelson-Aalen Cumulative Hazard Estimation
+
+  Higher class frequency is associated with lower churn risk.
+
+4. Cox Proportional Hazards Model
+
+  Contract Period: Longer contracts significantly reduce churn.
+  Class Frequency: More frequent class attendance leads to lower churn risk.
+  Location & Partner Membership: Both improve retention.
+  Age: Older members are more stable.
+
+5. Residual Diagnostics
+
+  Model validation shows no major issues, confirming its reliability.
